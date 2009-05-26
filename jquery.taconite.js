@@ -10,7 +10,7 @@
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
  * $Id: jquery.taconite.js 2457 2007-07-23 02:43:46Z malsup $
- * @version: 3.05  24-JAN-2009
+ * @version: 3.06  26-MAY-2009
  * @requires jQuery v1.2.6 or later
  */
 
@@ -19,7 +19,7 @@
 $.taconite = function(xml) { processDoc(xml); };
 
 $.taconite.debug = 0;  // set to true to enable debug logging to Firebug
-$.taconite.version = '3.05';
+$.taconite.version = '3.06';
 $.taconite.defaults = {
     cdataWrap: 'div'
 };
@@ -44,12 +44,7 @@ $.httpData = $.taconite.detect = function(xhr, type) {
     }
     var data = $.taconite._httpData(xhr, type); // call original method
     if (data && data.documentElement) {
-        var root = data.documentElement.tagName;
-        log('XML document root: ', root);
-        if (root == 'taconite') {
-            log('taconite command document detected');
-            $.taconite(data);
-        }
+		$.taconite(data);
     }
     else { 
         log('jQuery core httpData returned: ' + data);
@@ -74,8 +69,25 @@ function log() {
 function processDoc(xml) { 
     var status = true, ex;
     try {
-        $.event.trigger('taconite-begin-notify', [xml])
-        status = go(xml); 
+		if (typeof xml == 'string')
+			xml = convert(xml);
+		if (!xml) {
+			log('$.taconite invoked without valid document; nothing to process');
+			return false;
+		}
+		
+		var root = xml.documentElement.tagName;
+		log('XML document root: ', root);
+		
+		var taconiteDoc = $('taconite', xml)[0];
+			
+		if (!taconiteDoc) {
+			log('document does not contain <taconite> element; nothing to process');
+			return false;
+		}
+		
+		$.event.trigger('taconite-begin-notify', [taconiteDoc])
+        status = go(taconiteDoc); 
     } catch(e) {
         status = ex = e;
     }
@@ -83,19 +95,39 @@ function processDoc(xml) {
     if (ex) throw ex;
 };
 
+// convert string to xml document
+function convert(s) {
+	var doc;
+	log('attempting string to document conversion');
+	try {
+		if (window.DOMParser) {
+			var parser = new DOMParser();
+			doc = parser.parseFromString(s, 'text/xml');
+		}
+		else {
+			doc = $("<xml>")[0];
+			doc.async = 'false';
+			doc.loadXML(s);
+		}
+	}
+	catch(e) {
+		if (window.console && window.console.error)
+			window.console.error('[taconite] ERROR parsing XML string for conversion: ' + e);
+		throw e;
+	}
+	var ok = doc && doc.documentElement && doc.documentElement.tagName != 'parsererror';
+	log('conversion ', ok ? 'successful!' : 'FAILED');
+	return doc;
+};
+
+
 function go(xml) {
     var trimHash = { wrap: 1 };
 
-    if (typeof xml == 'string')
-        xml = convert(xml);
-    if (!xml || !xml.documentElement) {
-        log('$.taconite invoked without valid document; nothing to process');
-        return false;
-    }
     try {
         var t = new Date().getTime();
         // process the document
-        process(xml.documentElement.childNodes);
+        process(xml.childNodes);
         $.taconite.lastTime = (new Date().getTime()) - t;
         log('time to process response: ' + $.taconite.lastTime + 'ms');
     } catch(e) {
@@ -105,31 +137,6 @@ function go(xml) {
     }
     return true;
     
-// convert string to xml document
-    function convert(s) {
-        var doc;
-        log('attempting string to document conversion');
-        try {
-            if (window.DOMParser) {
-                var parser = new DOMParser();
-                doc = parser.parseFromString(s, 'text/xml');
-            }
-            else {
-                doc = $("<xml>")[0];
-                doc.async = 'false';
-                doc.loadXML(s);
-            }
-        }
-        catch(e) {
-            if (window.console && window.console.error)
-                window.console.error('[taconite] ERROR parsing XML string for conversion: ' + e);
-            throw e;
-        }
-        var ok = doc && doc.documentElement && doc.documentElement.tagName != 'parsererror';
-        log('conversion ', ok ? 'successful!' : 'FAILED');
-        return doc;
-    };
-
 // process the taconite commands    
     function process(commands) {
         var doPostProcess = 0;
@@ -186,7 +193,7 @@ function go(xml) {
         function postProcess() {
             if ($.browser.mozilla) return; 
             // post processing fixes go here; currently there is only one:
-            // fix1: opera, IE6, Safari/Win don't maintain selected options in all cases (thanks to Karel Fuc�k for this!)
+            // fix1: opera, IE6, Safari/Win don't maintain selected options in all cases (thanks to Karel Fučík for this!)
             $('select:taconiteTag').each(function() {
                 var sel = this;
                 $('option:taconiteTag', this).each(function() {
