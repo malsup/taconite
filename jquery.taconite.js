@@ -10,7 +10,7 @@
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
  * $Id: jquery.taconite.js 2457 2007-07-23 02:43:46Z malsup $
- * @version: 3.06  26-MAY-2009
+ * @version: 3.07  09-SEP-2009
  * @requires jQuery v1.2.6 or later
  */
 
@@ -19,7 +19,7 @@
 $.taconite = function(xml) { processDoc(xml); };
 
 $.taconite.debug = 0;  // set to true to enable debug logging to Firebug
-$.taconite.version = '3.06';
+$.taconite.version = '3.07';
 $.taconite.defaults = {
     cdataWrap: 'div'
 };
@@ -86,7 +86,7 @@ function processDoc(xml) {
 			return false;
 		}
 		
-		$.event.trigger('taconite-begin-notify', [taconiteDoc])
+		$.event.trigger('taconite-begin-notify', [taconiteDoc]);
         status = go(taconiteDoc); 
     } catch(e) {
         status = ex = e;
