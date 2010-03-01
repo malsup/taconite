@@ -1,25 +1,24 @@
-/*
+/*!
  * jQuery Taconite plugin - A port of the Taconite framework by Ryan Asleson and
  *     Nathaniel T. Schutta: http://taconite.sourceforge.net/
  *
  * Examples and documentation at: http://malsup.com/jquery/taconite/
- * Copyright (c) 2007-2009 M. Alsup
+ * Copyright (c) 2007-2010 M. Alsup
  * Dual licensed under the MIT and GPL licenses:
  * http://www.opensource.org/licenses/mit-license.php
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * $Id: jquery.taconite.js 2457 2007-07-23 02:43:46Z malsup $
- * @version: 3.07  09-SEP-2009
+ * @version: 3.09  01-MAR-2010
  * @requires jQuery v1.2.6 or later
  */
 
 (function($) {
+var version = '3.09';
 
 $.taconite = function(xml) { processDoc(xml); };
 
-$.taconite.debug = 0;  // set to true to enable debug logging to Firebug
-$.taconite.version = '3.07';
+$.taconite.debug = 0;  // set to true to enable debug logging to window.console.log
 $.taconite.defaults = {
     cdataWrap: 'div'
 };
@@ -32,17 +31,17 @@ if (typeof $.fn.replaceContent == 'undefined')
 
 $.expr[':'].taconiteTag = function(a) { return a.taconiteTag === 1; };
 
-$.taconite._httpData = $.httpData; // original jQuery httpData function
+var _httpData = $.httpData; // original jQuery httpData function
 
 // replace jQuery's httpData method
 $.httpData = $.taconite.detect = function(xhr, type) {
     var ct = xhr.getResponseHeader('content-type');
     if ($.taconite.debug) {
         log('[AJAX response] content-type: ', ct, ';  status: ', xhr.status, ' ', xhr.statusText, ';  has responseXML: ', xhr.responseXML != null);
-        log('type: ' + type);
+        log('type arg: ' + type);
         log('responseXML: ' + xhr.responseXML);
     }
-    var data = $.taconite._httpData(xhr, type); // call original method
+    var data = _httpData(xhr, type); // call original method
     if (data && data.documentElement) {
 		$.taconite(data);
     }
@@ -55,14 +54,14 @@ $.httpData = $.taconite.detect = function(xhr, type) {
 
 // allow auto-detection to be enabled/disabled on-demand
 $.taconite.enableAutoDetection = function(b) {
-    $.httpData = b ? $.taconite.detect : $.taconite._httpData;
+    $.httpData = b ? $.taconite.detect : _httpData;
 };
 
 var logCount = 0;
 function log() {
     if (!$.taconite.debug || !window.console || !window.console.log) return;
     if (!logCount++)
-        log('Plugin Version: ' + $.taconite.version);
+        log('Plugin Version: ' + version);
     window.console.log('[taconite] ' + [].join.call(arguments,''));
 };
 
@@ -177,12 +176,31 @@ function go(xml) {
                 v = cmdNode.getAttribute('arg'+j);
                 if (v === null)
                     break;
+                // support numeric primitives
+                var n = Number(v);
+				if (v == n)
+					v = n;
                 a.push(v);
             }
 
             if ($.taconite.debug) {
-                var arg = els ? '...' : a.join(',');
-                log("invoking command: $('", q, "').", cmd, '('+ arg +')');
+				var args = '';
+				if (els)
+					args = '...';
+				else {
+					for (var k=0; k < a.length; k++) {
+						if (k > 0)
+							args += ',';
+						var val = a[k];
+						var isString = typeof val == 'string';
+						if (isString)
+							args += '\'';
+						args += val;							
+						if (isString)
+							args += '\'';
+					}
+				}
+                log("invoking command: $('", q, "').", cmd, '('+ args +')');
             }
             jq[cmd].apply(jq,a);
         }
