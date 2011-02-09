@@ -3,45 +3,85 @@
  *     Nathaniel T. Schutta: http://taconite.sourceforge.net/
  *
  * Examples and documentation at: http://malsup.com/jquery/taconite/
- * Copyright (c) 2007-2010 M. Alsup
+ * Copyright (c) 2007-2011 M. Alsup
  * Dual licensed under the MIT and GPL licenses:
  * http://www.opensource.org/licenses/mit-license.php
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.09  01-MAR-2010
+ * @version: 3.50  08-FEB-2011
  * @requires jQuery v1.2.6 or later
  */
 
 (function($) {
-var version = '3.09';
+var version = '3.50';
 
 $.taconite = function(xml) { processDoc(xml); };
 
 $.taconite.debug = 0;  // set to true to enable debug logging to window.console.log
+$.taconite.autodetect = true;
 $.taconite.defaults = {
     cdataWrap: 'div'
 };
 
 // add 'replace' and 'replaceContent' plugins (conditionally)
 if (typeof $.fn.replace == 'undefined')
-    $.fn.replace = function(a) { return this.after(a).remove(); };
+    $.fn.replace = function(a) { 
+		this.after(a);
+		this.remove(); 
+};
 if (typeof $.fn.replaceContent == 'undefined')
     $.fn.replaceContent = function(a) { return this.empty().append(a); };
 
 $.expr[':'].taconiteTag = function(a) { return a.taconiteTag === 1; };
 
-var _httpData = $.httpData; // original jQuery httpData function
+// allow auto-detection to be enabled/disabled on-demand
+$.taconite.enableAutoDetection = function(b) {
+    $.taconite.autodetect = b;
+	if (oldHttpData)
+		$.httpData = b ? oldHttpData : detect;
+};
 
-// replace jQuery's httpData method
-$.httpData = $.taconite.detect = function(xhr, type) {
+var logCount = 0;
+function log() {
+    if (!$.taconite.debug || !window.console || !window.console.log) return;
+    !logCount++ && log('Plugin Version: ' + version);
+    window.console.log('[taconite] ' + [].join.call(arguments,''));
+};
+
+var parseJSON = $.parseJSON || function(s) {
+	return window['eval']('(' + s + ')');
+};
+
+function httpData( xhr, type, s ) { // mostly lifted from jq1.4.4
+	var ct = xhr.getResponseHeader('content-type') || '',
+		xml = type === 'xml' || !type && ct.indexOf('xml') >= 0,
+		data = xml ? xhr.responseXML : xhr.responseText;
+
+	if (xml && data.documentElement.nodeName === 'parsererror') {
+		$.error && $.error('parsererror');
+	}
+	if (s && s.dataFilter) {
+		data = s.dataFilter(data, type);
+	}
+	if (typeof data === 'string') {
+		if (type === 'json' || !type && ct.indexOf('json') >= 0) {
+			data = parseJSON(data);
+		} else if (type === "script" || !type && ct.indexOf("javascript") >= 0) {
+			$.globalEval(data);
+		}
+	}
+	return data;
+};
+
+function detect(xhr, type, s) {
     var ct = xhr.getResponseHeader('content-type');
     if ($.taconite.debug) {
         log('[AJAX response] content-type: ', ct, ';  status: ', xhr.status, ' ', xhr.statusText, ';  has responseXML: ', xhr.responseXML != null);
         log('type arg: ' + type);
         log('responseXML: ' + xhr.responseXML);
     }
-    var data = _httpData(xhr, type); // call original method
+    var data = httpData(xhr, type, s); // call original method
     if (data && data.documentElement) {
 		$.taconite(data);
     }
@@ -52,18 +92,18 @@ $.httpData = $.taconite.detect = function(xhr, type) {
     return data;
 };
 
-// allow auto-detection to be enabled/disabled on-demand
-$.taconite.enableAutoDetection = function(b) {
-    $.httpData = b ? $.taconite.detect : _httpData;
-};
+// 1.5+ hook
+$.ajaxPrefilter && $.ajaxPrefilter(function( options, originalOptions, jqXHR ) {
+	jqXHR.success(function( data, status, jqXHR ) {
+		if ($.taconite.autodetect)
+			detect(jqXHR, options.dataType, options);
+	});
+});
 
-var logCount = 0;
-function log() {
-    if (!$.taconite.debug || !window.console || !window.console.log) return;
-    if (!logCount++)
-        log('Plugin Version: ' + version);
-    window.console.log('[taconite] ' + [].join.call(arguments,''));
-};
+// < 1.5 hook
+var oldHttpData = $.httpData;
+if ($.httpData)
+ 	$.httpData = detect;  // replace jQuery's httpData method
 
 function processDoc(xml) { 
     var status = true, ex;
