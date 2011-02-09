@@ -20,9 +20,11 @@ $.taconite = function(xml) { processDoc(xml); };
 
 $.taconite.debug = 0;  // set to true to enable debug logging to window.console.log
 $.taconite.autodetect = true;
+$.taconite.parsers = {};
 $.taconite.defaults = {
     cdataWrap: 'div'
 };
+var parsedData = null;
 
 // add 'replace' and 'replaceContent' plugins (conditionally)
 if (typeof $.fn.replace == 'undefined')
@@ -52,6 +54,8 @@ function log() {
 var parseJSON = $.parseJSON || function(s) {
     return window['eval']('(' + s + ')');
 };
+
+$.taconite.parsers["application/json"] = parseJSON;
 
 function httpData( xhr, type, s ) { // mostly lifted from jq1.4.4
     var ct = xhr.getResponseHeader('content-type') || '',
@@ -130,7 +134,8 @@ function processDoc(xml) {
     } catch(e) {
         status = ex = e;
     }
-    $.event.trigger('taconite-complete-notify', [xml, !!status, status === true ? null : status]);
+    $.event.trigger('taconite-complete-notify', [xml, !!status, status === true ? null : status, parsedData]);
+    parsedData = null;
     if (ex) throw ex;
 };
 
@@ -187,6 +192,21 @@ function go(xml) {
                 var js = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
                 log('invoking "eval" command: ', js);
                 if (js) $.globalEval(js);
+                continue;
+            } else if (cmd == 'data') {
+                var data = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null),
+                    typ = cmdNode.getAttribute('type');
+                log('processing "' + typ + '" data type: ', data);
+                if (data) {
+                    var prsr = $.taconite.parsers[typ];
+                    if (!typ || !prsr) {
+                        log('no parser found for specified data type: ', typ);
+                        continue;
+                    }
+                    // TODO: aggregate multiple data nodes into a single returned array
+                    // TODO: ideally, pass data to original request's callbacks (via jqXHR?)
+                    parsedData = prsr(data);
+                }
                 continue;
             }
             var q = cmdNode.getAttribute('select');
