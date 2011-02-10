@@ -9,12 +9,12 @@
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.51  09-FEB-2011
+ * @version: 3.55  09-FEB-2011
  * @requires jQuery v1.2.6 or later
  */
 
 (function($) {
-var version = '3.51';
+var version = '3.55';
 
 $.taconite = function(xml) { processDoc(xml); };
 
@@ -165,6 +165,28 @@ function convert(s) {
 	return doc;
 };
 
+var rawDataHandlers = { 
+	'json': jsonHandler,
+	'js'  : jsHandler
+};
+$.taconite.registerRawDataHandler = function(type, fn) {
+	rawDataHandlers[type] = fn;
+}
+function handleRawData(type, data) {
+	var d = data, handler = rawDataHandlers[type];
+	if ($.isFunction(handler))
+		d = handler(data);
+    $.event.trigger('taconite-rawdata-notify', [type, d, data]);
+	return d;
+}
+
+function jsonHandler(json) {
+	return parseJSON(json);
+}
+function jsHandler(js) {
+	$.globalEval(js);
+}
+
 
 function go(xml) {
     var trimHash = { wrap: 1 };
@@ -185,35 +207,45 @@ function go(xml) {
 // process the taconite commands    
     function process(commands) {
         var doPostProcess = 0;
-        for(var i=0; i < commands.length; i++) {
+		var i,j,k, js, data, type, q, jq, cdataWrap, a, n, v, args, val, isString;
+		
+        for(i=0; i < commands.length; i++) {
             if (commands[i].nodeType != 1)
                 continue; // commands are elements
             var cmdNode = commands[i], cmd = cmdNode.tagName;
             if (cmd == 'eval') {
-                var js = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
+                js = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
                 log('invoking "eval" command: ', js);
-                if (js) $.globalEval(js);
+                if (js) 
+					$.globalEval(js);
                 continue;
             }
-            var q = cmdNode.getAttribute('select');
-            var jq = $(q);
+			if (cmd == 'rawData') {
+                data = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
+	            type = cmdNode.getAttribute('type');
+                log('rawData ('+type+'): ', data);
+				handleRawData(type, data);
+				continue;
+			}
+            q = cmdNode.getAttribute('select');
+            jq = $(q);
             if (!jq[0]) {
                 log('No matching targets for selector: ', q);
                 continue;
             }
-            var cdataWrap = cmdNode.getAttribute('cdataWrap') || $.taconite.defaults.cdataWrap;
+            cdataWrap = cmdNode.getAttribute('cdataWrap') || $.taconite.defaults.cdataWrap;
 
-            var a = [];
+            a = [];
             if (cmdNode.childNodes.length > 0) {
                 doPostProcess = 1;
-                for (var j=0,els=[]; j < cmdNode.childNodes.length; j++)
+                for (j=0,els=[]; j < cmdNode.childNodes.length; j++)
                     els[j] = createNode(cmdNode.childNodes[j]);
                 a.push(trimHash[cmd] ? cleanse(els) : els);
             }
 
             // remain backward compat with pre 2.0.9 versions
-            var n = cmdNode.getAttribute('name');
-            var v = cmdNode.getAttribute('value');
+            n = cmdNode.getAttribute('name');
+            v = cmdNode.getAttribute('value');
             if (n !== null) a.push(n);
             if (v !== null) a.push(v);
 
@@ -230,15 +262,15 @@ function go(xml) {
             }
 
             if ($.taconite.debug) {
-				var args = '';
+				args = '';
 				if (els)
 					args = '...';
 				else {
-					for (var k=0; k < a.length; k++) {
+					for (k=0; k < a.length; k++) {
 						if (k > 0)
 							args += ',';
-						var val = a[k];
-						var isString = typeof val == 'string';
+						val = a[k];
+						isString = typeof val == 'string';
 						if (isString)
 							args += '\'';
 						args += val;							
