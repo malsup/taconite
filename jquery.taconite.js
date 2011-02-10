@@ -9,12 +9,12 @@
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.50  08-FEB-2011
+ * @version: 3.51  09-FEB-2011
  * @requires jQuery v1.2.6 or later
  */
 
 (function($) {
-var version = '3.50';
+var version = '3.51';
 
 $.taconite = function(xml) { processDoc(xml); };
 
@@ -38,8 +38,8 @@ $.expr[':'].taconiteTag = function(a) { return a.taconiteTag === 1; };
 // allow auto-detection to be enabled/disabled on-demand
 $.taconite.enableAutoDetection = function(b) {
     $.taconite.autodetect = b;
-	if (oldHttpData)
-		$.httpData = b ? oldHttpData : detect;
+	if (origHttpData)
+		$.httpData = b ? origHttpData : detect;
 };
 
 var logCount = 0;
@@ -47,13 +47,13 @@ function log() {
     if (!$.taconite.debug || !window.console || !window.console.log) return;
     !logCount++ && log('Plugin Version: ' + version);
     window.console.log('[taconite] ' + [].join.call(arguments,''));
-};
+}
 
 var parseJSON = $.parseJSON || function(s) {
 	return window['eval']('(' + s + ')');
 };
 
-function httpData( xhr, type, s ) { // mostly lifted from jq1.4.4
+function httpData( xhr, type, s ) {
 	var ct = xhr.getResponseHeader('content-type') || '',
 		xml = type === 'xml' || !type && ct.indexOf('xml') >= 0,
 		data = xml ? xhr.responseXML : xhr.responseText;
@@ -72,7 +72,13 @@ function httpData( xhr, type, s ) { // mostly lifted from jq1.4.4
 		}
 	}
 	return data;
-};
+}
+
+function getResponse(xhr, type, s) {
+	if (origHttpData)
+		return origHttpData(xhr, type, s);
+	return xhr.responseXML || xhr.responseText;
+}
 
 function detect(xhr, type, s) {
     var ct = xhr.getResponseHeader('content-type');
@@ -81,8 +87,8 @@ function detect(xhr, type, s) {
         log('type arg: ' + type);
         log('responseXML: ' + xhr.responseXML);
     }
-    var data = httpData(xhr, type, s); // call original method
-    if (data && data.documentElement) {
+    var data = getResponse(xhr, type, s);
+    if ((data && data.documentElement && data.documentElement.nodeName != 'parsererror') || typeof data == 'string') {
 		$.taconite(data);
     }
     else { 
@@ -90,7 +96,7 @@ function detect(xhr, type, s) {
         log('httpData: response is not XML (or not "valid" XML)');
     }
     return data;
-};
+}
 
 // 1.5+ hook
 $.ajaxPrefilter && $.ajaxPrefilter(function( options, originalOptions, jqXHR ) {
@@ -101,7 +107,7 @@ $.ajaxPrefilter && $.ajaxPrefilter(function( options, originalOptions, jqXHR ) {
 });
 
 // < 1.5 hook
-var oldHttpData = $.httpData;
+var origHttpData = $.httpData;
 if ($.httpData)
  	$.httpData = detect;  // replace jQuery's httpData method
 
