@@ -9,12 +9,12 @@
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.55  09-FEB-2011
+ * @version: 3.56  10-FEB-2011
  * @requires jQuery v1.2.6 or later
  */
 
 (function($) {
-var version = '3.55';
+var version = '3.56';
 
 $.taconite = function(xml) { processDoc(xml); };
 
@@ -29,11 +29,17 @@ if (typeof $.fn.replace == 'undefined')
     $.fn.replace = function(a) { 
 		this.after(a);
 		this.remove(); 
-};
-if (typeof $.fn.replaceContent == 'undefined')
-    $.fn.replaceContent = function(a) { return this.empty().append(a); };
+}
 
-$.expr[':'].taconiteTag = function(a) { return a.taconiteTag === 1; };
+if (typeof $.fn.replaceContent == 'undefined') {
+    $.fn.replaceContent = function(a) { 
+		return this.empty().append(a); 
+	};
+}
+
+$.expr[':'].taconiteTag = function(a) { 
+	return a.taconiteTag === 1; 
+};
 
 // allow auto-detection to be enabled/disabled on-demand
 $.taconite.enableAutoDetection = function(b) {
@@ -111,6 +117,24 @@ var origHttpData = $.httpData;
 if ($.httpData)
  	$.httpData = detect;  // replace jQuery's httpData method
 
+// custom data parsers
+var parsers = { 'json': jsonParser };
+$.taconite.registerParser = function(type, fn) {
+	parsers[type] = fn;
+};
+function parseRawData(type, data) {
+	var d = data, parser = parsers[type];
+	if ($.isFunction(parser))
+		d = parser(data);
+    $.event.trigger('taconite-rawdata-notify', [type, d, data]);
+	return d;
+}
+
+function jsonParser(json) {
+	return parseJSON(json);
+}
+
+
 function processDoc(xml) { 
     var status = true, ex;
     try {
@@ -137,7 +161,8 @@ function processDoc(xml) {
         status = ex = e;
     }
     $.event.trigger('taconite-complete-notify', [xml, !!status, status === true ? null : status]);
-    if (ex) throw ex;
+    if (ex) 
+		throw ex;
 };
 
 // convert string to xml document
@@ -163,34 +188,9 @@ function convert(s) {
 	var ok = doc && doc.documentElement && doc.documentElement.tagName != 'parsererror';
 	log('conversion ', ok ? 'successful!' : 'FAILED');
 	return doc;
-};
-
-var rawDataHandlers = { 
-	'json': jsonHandler,
-	'js'  : jsHandler
-};
-$.taconite.registerRawDataHandler = function(type, fn) {
-	rawDataHandlers[type] = fn;
 }
-function handleRawData(type, data) {
-	var d = data, handler = rawDataHandlers[type];
-	if ($.isFunction(handler))
-		d = handler(data);
-    $.event.trigger('taconite-rawdata-notify', [type, d, data]);
-	return d;
-}
-
-function jsonHandler(json) {
-	return parseJSON(json);
-}
-function jsHandler(js) {
-	$.globalEval(js);
-}
-
 
 function go(xml) {
-    var trimHash = { wrap: 1 };
-
     try {
         var t = new Date().getTime();
         // process the document
@@ -203,190 +203,185 @@ function go(xml) {
         throw e;
     }
     return true;
+}
     
 // process the taconite commands    
-    function process(commands) {
-        var doPostProcess = 0;
-		var i,j,k, js, data, type, q, jq, cdataWrap, a, n, v, args, val, isString;
-		
-        for(i=0; i < commands.length; i++) {
-            if (commands[i].nodeType != 1)
-                continue; // commands are elements
-            var cmdNode = commands[i], cmd = cmdNode.tagName;
-            if (cmd == 'eval') {
-                js = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
-                log('invoking "eval" command: ', js);
-                if (js) 
-					$.globalEval(js);
-                continue;
-            }
-			if (cmd == 'rawData') {
-                data = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
-	            type = cmdNode.getAttribute('type');
-                log('rawData ('+type+'): ', data);
-				handleRawData(type, data);
-				continue;
-			}
-            q = cmdNode.getAttribute('select');
-            jq = $(q);
-            if (!jq[0]) {
-                log('No matching targets for selector: ', q);
-                continue;
-            }
-            cdataWrap = cmdNode.getAttribute('cdataWrap') || $.taconite.defaults.cdataWrap;
+function process(commands) {
+    var trimHash = { wrap: 1 };
+    var doPostProcess = 0;
+	var a, n, v, i, j, js, els, raw, type, q, jq, cdataWrap;
 
-            a = [];
-            if (cmdNode.childNodes.length > 0) {
-                doPostProcess = 1;
-                for (j=0,els=[]; j < cmdNode.childNodes.length; j++)
-                    els[j] = createNode(cmdNode.childNodes[j]);
-                a.push(trimHash[cmd] ? cleanse(els) : els);
-            }
-
-            // remain backward compat with pre 2.0.9 versions
-            n = cmdNode.getAttribute('name');
-            v = cmdNode.getAttribute('value');
-            if (n !== null) a.push(n);
-            if (v !== null) a.push(v);
-
-            // @since: 2.0.9: support arg1, arg2, arg3...
-            for (var j=1; true; j++) {
-                v = cmdNode.getAttribute('arg'+j);
-                if (v === null)
-                    break;
-                // support numeric primitives
-                var n = Number(v);
-				if (v == n)
-					v = n;
-                a.push(v);
-            }
-
-            if ($.taconite.debug) {
-				args = '';
-				if (els)
-					args = '...';
-				else {
-					for (k=0; k < a.length; k++) {
-						if (k > 0)
-							args += ',';
-						val = a[k];
-						isString = typeof val == 'string';
-						if (isString)
-							args += '\'';
-						args += val;							
-						if (isString)
-							args += '\'';
-					}
-				}
-                log("invoking command: $('", q, "').", cmd, '('+ args +')');
-            }
-            jq[cmd].apply(jq,a);
+    for(i=0; i < commands.length; i++) {
+        if (commands[i].nodeType != 1)
+            continue; // commands are elements
+        var cmdNode = commands[i], cmd = cmdNode.tagName;
+        if (cmd == 'eval') {
+            js = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
+            log('invoking "eval" command: ', js);
+            if (js) 
+				$.globalEval(js);
+            continue;
         }
-        // apply dynamic fixes
-        if (doPostProcess) 
-            postProcess();
-    
-        function postProcess() {
-            if ($.browser.mozilla) return; 
-            // post processing fixes go here; currently there is only one:
-            // fix1: opera, IE6, Safari/Win don't maintain selected options in all cases (thanks to Karel Fučík for this!)
-            $('select:taconiteTag').each(function() {
-                var sel = this;
-                $('option:taconiteTag', this).each(function() {
-                    this.setAttribute('selected','selected');
-                    this.taconiteTag = null;
-                    if (sel.type == 'select-one') {
-                        var idx = $('option',sel).index(this);
-                        sel.selectedIndex = idx;
-                    }
-                });
-                this.taconiteTag = null;
-            });
-        };
-        
-        function cleanse(els) {
-            for (var i=0, a=[]; i < els.length; i++)
-                if (els[i].nodeType == 1) a.push(els[i]);
-            return a;
-        };
-        
-        function createNode(node) {
-            var type = node.nodeType;
-            if (type == 1) return createElement(node);
-            if (type == 3) return fixTextNode(node.nodeValue);
-            if (type == 4) return handleCDATA(node.nodeValue);
-            return null;
-        };
-        
-        function handleCDATA(s) {
-            var el = document.createElement(cdataWrap);
-            el.innerHTML = s;
-            
-            // remove wrapper node if possible
-            var $el = $(el), $ch = $el.children();
-            if ($ch.size() == 1)
-                return $ch[0];
-            return el;
-        };
-        
-        function fixTextNode(s) {
-            if ($.browser.msie) s = s.replace(/\n/g, '\r').replace(/\s+/g, ' ');
-            return document.createTextNode(s);
-        };
-        
-        function createElement(node) {
-            var e, tag = node.tagName.toLowerCase();
-            // some elements in IE need to be created with attrs inline
-            if ($.browser.msie) {
-                var type = node.getAttribute('type');
-                if (tag == 'table' || type == 'radio' || type == 'checkbox' || tag == 'button' || 
-                    (tag == 'select' && node.getAttribute('multiple'))) {
-                    e = document.createElement('<' + tag + ' ' + copyAttrs(null, node, true) + '>');
-                }
-            }
-            if (!e) {
-                e = document.createElement(tag);
-                // copyAttrs(e, node, tag == 'option' && $.browser.safari);
-                copyAttrs(e, node);
-            }
-            
-            // IE fix; colspan must be explicitly set
-            if ($.browser.msie && tag == 'td') {
-                var colspan = node.getAttribute('colspan');
-                if (colspan) e.colSpan = parseInt(colspan);
-            }
+		if (cmd == 'rawData') {
+            raw = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
+         	type = cmdNode.getAttribute('type');
+            log('rawData ('+type+'): ', raw);
+			parseRawData(type, raw);
+			continue;
+		}
+        q = cmdNode.getAttribute('select');
+        jq = $(q);
+        if (!jq[0]) {
+            log('No matching targets for selector: ', q);
+            continue;
+        }
+        cdataWrap = cmdNode.getAttribute('cdataWrap') || $.taconite.defaults.cdataWrap;
 
-            // IE fix; script tag not allowed to have children
-            if($.browser.msie && !e.canHaveChildren) {
-                if(node.childNodes.length > 0)
-                    e.text = node.text;
+        a = [];
+        if (cmdNode.childNodes.length > 0) {
+            doPostProcess = 1;
+            for (j=0,els=[]; j < cmdNode.childNodes.length; j++)
+                els[j] = createNode(cmdNode.childNodes[j]);
+            a.push(trimHash[cmd] ? cleanse(els) : els);
+        }
+
+        // remain backward compat with pre 2.0.9 versions
+        n = cmdNode.getAttribute('name');
+        v = cmdNode.getAttribute('value');
+        if (n !== null) a.push(n);
+        if (v !== null) a.push(v);
+
+        // @since: 2.0.9: support arg1, arg2, arg3...
+        for (var j=1; true; j++) {
+            v = cmdNode.getAttribute('arg'+j);
+            if (v === null)
+                break;
+            // support numeric primitives
+            var n = Number(v);
+			if (v == n)
+				v = n;
+            a.push(v);
+        }
+
+        $.taconite.debug && logCommand(q, cmd, a, els);
+        jq[cmd].apply(jq,a);
+    }
+
+    // apply dynamic fixes
+    doPostProcess && postProcess();
+}
+
+function logCommand(q, cmd, a, els) {
+	var args = '...';
+	if (!els) {
+		args = '';
+		for (var k=0, val=a[0]; k < a.length, val=a[k]; k++) {
+			k > 0 && (args += ',');
+			typeof val == 'string' ? (args += ("'" + val + "'")) : (args += val);
+		}
+	}
+    log("invoking command: $('", q, "').", cmd, '('+ args +')');
+}
+
+function postProcess() {
+    if ($.browser.mozilla) return; 
+    // post processing fixes go here; currently there is only one:
+    // fix1: opera, IE6, Safari/Win don't maintain selected options in all cases (thanks to Karel Fučík for this!)
+    $('select:taconiteTag').each(function() {
+        var sel = this;
+        $('option:taconiteTag', this).each(function() {
+            this.setAttribute('selected','selected');
+            this.taconiteTag = null;
+            if (sel.type == 'select-one') {
+                var idx = $('option',sel).index(this);
+                sel.selectedIndex = idx;
             }
-            else {
-                for(var i=0, max=node.childNodes.length; i < max; i++) {
-                    var child = createNode (node.childNodes[i]);
-                    if(child) e.appendChild(child);
-                }
-            }
-            if (! $.browser.mozilla) {
-                if (tag == 'select' || (tag == 'option' && node.getAttribute('selected')))
-                    e.taconiteTag = 1;
-            }
-            return e;
-        };
-        
-        function copyAttrs(dest, src, inline) {
-            for (var i=0, attr=''; i < src.attributes.length; i++) {
-                var a = src.attributes[i], n = $.trim(a.name), v = $.trim(a.value);
-                if (inline) attr += (n + '="' + v + '" ');
-                else if (n == 'style') { // IE workaround
-                    dest.style.cssText = v;
-                    dest.setAttribute(n, v);
-                }
-                else $.attr(dest, n, v);
-            }
-            return attr;
-        };
-    };
-};
+        });
+        this.taconiteTag = null;
+    });
+}
+
+function cleanse(els) {
+    for (var i=0, a=[]; i < els.length; i++)
+        if (els[i].nodeType == 1) a.push(els[i]);
+    return a;
+}
+
+function createNode(node) {
+    var type = node.nodeType;
+    if (type == 1) return createElement(node);
+    if (type == 3) return fixTextNode(node.nodeValue);
+    if (type == 4) return handleCDATA(node.nodeValue);
+    return null;
+}
+
+function handleCDATA(s) {
+    var el = document.createElement(cdataWrap);
+    el.innerHTML = s;
+    
+    // remove wrapper node if possible
+    var $el = $(el), $ch = $el.children();
+    if ($ch.size() == 1)
+        return $ch[0];
+    return el;
+}
+
+function fixTextNode(s) {
+    if ($.browser.msie) s = s.replace(/\n/g, '\r').replace(/\s+/g, ' ');
+    return document.createTextNode(s);
+}
+
+function createElement(node) {
+    var e, tag = node.tagName.toLowerCase();
+    // some elements in IE need to be created with attrs inline
+    if ($.browser.msie) {
+        var type = node.getAttribute('type');
+        if (tag == 'table' || type == 'radio' || type == 'checkbox' || tag == 'button' || 
+            (tag == 'select' && node.getAttribute('multiple'))) {
+            e = document.createElement('<' + tag + ' ' + copyAttrs(null, node, true) + '>');
+        }
+    }
+    if (!e) {
+        e = document.createElement(tag);
+        // copyAttrs(e, node, tag == 'option' && $.browser.safari);
+        copyAttrs(e, node);
+    }
+    
+    // IE fix; colspan must be explicitly set
+    if ($.browser.msie && tag == 'td') {
+        var colspan = node.getAttribute('colspan');
+        if (colspan) e.colSpan = parseInt(colspan);
+    }
+
+    // IE fix; script tag not allowed to have children
+    if($.browser.msie && !e.canHaveChildren) {
+        if(node.childNodes.length > 0)
+            e.text = node.text;
+    }
+    else {
+        for(var i=0, max=node.childNodes.length; i < max; i++) {
+            var child = createNode (node.childNodes[i]);
+            if(child) e.appendChild(child);
+        }
+    }
+    if (! $.browser.mozilla) {
+        if (tag == 'select' || (tag == 'option' && node.getAttribute('selected')))
+            e.taconiteTag = 1;
+    }
+    return e;
+}
+
+function copyAttrs(dest, src, inline) {
+    for (var i=0, attr=''; i < src.attributes.length; i++) {
+        var a = src.attributes[i], n = $.trim(a.name), v = $.trim(a.value);
+        if (inline) attr += (n + '="' + v + '" ');
+        else if (n == 'style') { // IE workaround
+            dest.style.cssText = v;
+            dest.setAttribute(n, v);
+        }
+        else $.attr(dest, n, v);
+    }
+    return attr;
+}
 
 })(jQuery);
