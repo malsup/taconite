@@ -9,14 +9,16 @@
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.56  10-FEB-2011
+ * @version: 3.57  10-FEB-2011
  * @requires jQuery v1.2.6 or later
  */
 
 (function($) {
-var version = '3.56';
+var version = '3.57';
 
-$.taconite = function(xml) { processDoc(xml); };
+$.taconite = function(xml) { 
+	processDoc(xml); 
+};
 
 $.taconite.debug = 0;  // set to true to enable debug logging to window.console.log
 $.taconite.autodetect = true;
@@ -25,17 +27,13 @@ $.taconite.defaults = {
 };
 
 // add 'replace' and 'replaceContent' plugins (conditionally)
-if (typeof $.fn.replace == 'undefined')
-    $.fn.replace = function(a) { 
-		this.after(a);
-		this.remove(); 
-}
-
-if (typeof $.fn.replaceContent == 'undefined') {
-    $.fn.replaceContent = function(a) { 
-		return this.empty().append(a); 
-	};
-}
+$.fn.replace = $.fn.replace || function(a) { 
+	this.after(a);
+	this.remove(); 
+};
+$.fn.replaceContent = $.fn.replaceContent || function(a) { 
+	return this.empty().append(a); 
+};
 
 $.expr[':'].taconiteTag = function(a) { 
 	return a.taconiteTag === 1; 
@@ -129,7 +127,6 @@ function parseRawData(type, data) {
     $.event.trigger('taconite-rawdata-notify', [type, d, data]);
 	return d;
 }
-
 function jsonParser(json) {
 	return parseJSON(json);
 }
@@ -163,7 +160,7 @@ function processDoc(xml) {
     $.event.trigger('taconite-complete-notify', [xml, !!status, status === true ? null : status]);
     if (ex) 
 		throw ex;
-};
+}
 
 // convert string to xml document
 function convert(s) {
