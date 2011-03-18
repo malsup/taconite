@@ -14,7 +14,7 @@
  */
 
 (function($) {
-var version = '3.58';
+var version = '3.59';
 
 $.taconite = function(xml) { 
 	processDoc(xml); 
