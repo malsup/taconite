@@ -9,12 +9,12 @@
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.57  10-FEB-2011
+ * @version: 3.59  18-MAR-2011
  * @requires jQuery v1.2.6 or later
  */
 
 (function($) {
-var version = '3.57';
+var version = '3.58';
 
 $.taconite = function(xml) { 
 	processDoc(xml); 
@@ -89,7 +89,7 @@ function detect(xhr, type, s) {
     if ($.taconite.debug) {
         log('[AJAX response] content-type: ', ct, ';  status: ', xhr.status, ' ', xhr.statusText, ';  has responseXML: ', xhr.responseXML != null);
         log('type arg: ' + type);
-        log('responseXML: ' + xhr.responseXML);
+//        log('responseXML: ' + xhr.responseXML);  // IE9 doesn't like xhr.toString()
     }
     var data = getResponse(xhr, type, s);
     if ((data && data.documentElement && data.documentElement.nodeName != 'parsererror') || typeof data == 'string') {
@@ -238,7 +238,7 @@ function process(commands) {
         if (cmdNode.childNodes.length > 0) {
             doPostProcess = 1;
             for (j=0,els=[]; j < cmdNode.childNodes.length; j++)
-                els[j] = createNode(cmdNode.childNodes[j]);
+                els[j] = createNode(cmdNode.childNodes[j], cdataWrap);
             a.push(trimHash[cmd] ? cleanse(els) : els);
         }
 
@@ -304,20 +304,20 @@ function cleanse(els) {
     return a;
 }
 
-function createNode(node) {
+function createNode(node, cdataWrap) {
     var type = node.nodeType;
-    if (type == 1) return createElement(node);
+    if (type == 1) return createElement(node, cdataWrap);
     if (type == 3) return fixTextNode(node.nodeValue);
-    if (type == 4) return handleCDATA(node.nodeValue);
+    if (type == 4) return handleCDATA(node.nodeValue, cdataWrap);
     return null;
 }
 
-function handleCDATA(s) {
+function handleCDATA(s, cdataWrap) {
     var el = document.createElement(cdataWrap);
-    el.innerHTML = s;
+    var $el = $(el), $ch = $el.children();
+    $el[cdataWrap == 'script' ? 'text' : 'html'](s);
     
     // remove wrapper node if possible
-    var $el = $(el), $ch = $el.children();
     if ($ch.size() == 1)
         return $ch[0];
     return el;
@@ -328,10 +328,10 @@ function fixTextNode(s) {
     return document.createTextNode(s);
 }
 
-function createElement(node) {
+function createElement(node, cdataWrap) {
     var e, tag = node.tagName.toLowerCase();
     // some elements in IE need to be created with attrs inline
-    if ($.browser.msie) {
+    if ($.browser.msie && $.browser.version < 9) {
         var type = node.getAttribute('type');
         if (tag == 'table' || type == 'radio' || type == 'checkbox' || tag == 'button' || 
             (tag == 'select' && node.getAttribute('multiple'))) {
@@ -357,7 +357,7 @@ function createElement(node) {
     }
     else {
         for(var i=0, max=node.childNodes.length; i < max; i++) {
-            var child = createNode (node.childNodes[i]);
+            var child = createNode (node.childNodes[i], cdataWrap);
             if(child) e.appendChild(child);
         }
     }
