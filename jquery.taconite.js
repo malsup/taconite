@@ -9,12 +9,12 @@
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.59  18-MAR-2011
+ * @version: 3.60  17-APR-2011
  * @requires jQuery v1.2.6 or later
  */
 
 (function($) {
-var version = '3.59';
+var version = '3.60';
 
 $.taconite = function(xml) { 
 	processDoc(xml); 
@@ -92,9 +92,14 @@ function detect(xhr, type, s) {
 //        log('responseXML: ' + xhr.responseXML);  // IE9 doesn't like xhr.toString()
     }
     var data = getResponse(xhr, type, s);
-    if ((data && data.documentElement && data.documentElement.nodeName != 'parsererror') || typeof data == 'string') {
+    if (data && data.documentElement && data.documentElement.nodeName != 'parsererror') {
 		$.taconite(data);
     }
+	else if (typeof data == 'string') {
+		// issue #4 (don't try to parse plain text or html responses
+		if ( /taconite/.test(data) )
+			$.taconite(data);
+	}
     else { 
         log('jQuery core httpData returned: ' + data);
         log('httpData: response is not XML (or not "valid" XML)');
