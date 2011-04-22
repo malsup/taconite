@@ -9,7 +9,7 @@
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.60  17-APR-2011
+ * @version: 3.61  22-APR-2011
  * @requires jQuery v1.2.6 or later
  */
 
@@ -259,9 +259,11 @@ function process(commands) {
             if (v === null)
                 break;
             // support numeric primitives
-            var n = Number(v);
-			if (v == n)
-				v = n;
+			if (v.length) {
+	            var n = Number(v);
+				if (v == n)
+					v = n;
+			}
             a.push(v);
         }
 
