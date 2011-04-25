@@ -9,12 +9,12 @@
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.61  22-APR-2011
- * @requires jQuery v1.2.6 or later
+ * @version: 3.62  25-APR-2011
+ * @requires jQuery v1.3.2 or later
  */
 
 (function($) {
-var version = '3.60';
+var version = '3.62';
 
 $.taconite = function(xml) { 
 	processDoc(xml); 
@@ -321,8 +321,8 @@ function createNode(node, cdataWrap) {
 
 function handleCDATA(s, cdataWrap) {
     var el = document.createElement(cdataWrap);
-    var $el = $(el), $ch = $el.children();
-    $el[cdataWrap == 'script' ? 'text' : 'html'](s);
+    var $el = $(el)[cdataWrap == 'script' ? 'text' : 'html'](s);
+    var $ch = $el.children();
     
     // remove wrapper node if possible
     if ($ch.size() == 1)
