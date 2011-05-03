@@ -16,8 +16,8 @@
 (function($) {
 var version = '3.62';
 
-$.taconite = function(xml) { 
-	processDoc(xml); 
+$.taconite = function(xml) {
+    processDoc(xml);
 };
 
 $.taconite.debug = 0;  // set to true to enable debug logging to window.console.log
@@ -27,23 +27,23 @@ $.taconite.defaults = {
 };
 
 // add 'replace' and 'replaceContent' plugins (conditionally)
-$.fn.replace = $.fn.replace || function(a) { 
-	this.after(a);
-	this.remove(); 
+$.fn.replace = $.fn.replace || function(a) {
+    this.after(a);
+    this.remove();
 };
-$.fn.replaceContent = $.fn.replaceContent || function(a) { 
-	return this.empty().append(a); 
+$.fn.replaceContent = $.fn.replaceContent || function(a) {
+    return this.empty().append(a);
 };
 
-$.expr[':'].taconiteTag = function(a) { 
-	return a.taconiteTag === 1; 
+$.expr[':'].taconiteTag = function(a) {
+    return a.taconiteTag === 1;
 };
 
 // allow auto-detection to be enabled/disabled on-demand
 $.taconite.enableAutoDetection = function(b) {
     $.taconite.autodetect = b;
-	if (origHttpData)
-		$.httpData = b ? origHttpData : detect;
+    if (origHttpData)
+        $.httpData = b ? origHttpData : detect;
 };
 
 var logCount = 0;
@@ -54,34 +54,34 @@ function log() {
 }
 
 var parseJSON = $.parseJSON || function(s) {
-	return window['eval']('(' + s + ')');
+    return window['eval']('(' + s + ')');
 };
 
 function httpData( xhr, type, s ) {
-	var ct = xhr.getResponseHeader('content-type') || '',
-		xml = type === 'xml' || !type && ct.indexOf('xml') >= 0,
-		data = xml ? xhr.responseXML : xhr.responseText;
+    var ct = xhr.getResponseHeader('content-type') || '',
+        xml = type === 'xml' || !type && ct.indexOf('xml') >= 0,
+        data = xml ? xhr.responseXML : xhr.responseText;
 
-	if (xml && data.documentElement.nodeName === 'parsererror') {
-		$.error && $.error('parsererror');
-	}
-	if (s && s.dataFilter) {
-		data = s.dataFilter(data, type);
-	}
-	if (typeof data === 'string') {
-		if (type === 'json' || !type && ct.indexOf('json') >= 0) {
-			data = parseJSON(data);
-		} else if (type === "script" || !type && ct.indexOf("javascript") >= 0) {
-			$.globalEval(data);
-		}
-	}
-	return data;
+    if (xml && data.documentElement.nodeName === 'parsererror') {
+        $.error && $.error('parsererror');
+    }
+    if (s && s.dataFilter) {
+        data = s.dataFilter(data, type);
+    }
+    if (typeof data === 'string') {
+        if (type === 'json' || !type && ct.indexOf('json') >= 0) {
+            data = parseJSON(data);
+        } else if (type === "script" || !type && ct.indexOf("javascript") >= 0) {
+            $.globalEval(data);
+        }
+    }
+    return data;
 }
 
 function getResponse(xhr, type, s) {
-	if (origHttpData)
-		return origHttpData(xhr, type, s);
-	return xhr.responseXML || xhr.responseText;
+    if (origHttpData)
+        return origHttpData(xhr, type, s);
+    return xhr.responseXML || xhr.responseText;
 }
 
 function detect(xhr, type, s) {
@@ -93,14 +93,14 @@ function detect(xhr, type, s) {
     }
     var data = getResponse(xhr, type, s);
     if (data && data.documentElement && data.documentElement.nodeName != 'parsererror') {
-		$.taconite(data);
+        $.taconite(data);
     }
-	else if (typeof data == 'string') {
-		// issue #4 (don't try to parse plain text or html responses
-		if ( /taconite/.test(data) )
-			$.taconite(data);
-	}
-    else { 
+    else if (typeof data == 'string') {
+        // issue #4 (don't try to parse plain text or html responses
+        if ( /taconite/.test(data) )
+            $.taconite(data);
+    }
+    else {
         log('jQuery core httpData returned: ' + data);
         log('httpData: response is not XML (or not "valid" XML)');
     }
@@ -109,87 +109,87 @@ function detect(xhr, type, s) {
 
 // 1.5+ hook
 $.ajaxPrefilter && $.ajaxPrefilter(function( options, originalOptions, jqXHR ) {
-	jqXHR.success(function( data, status, jqXHR ) {
-		if ($.taconite.autodetect)
-			detect(jqXHR, options.dataType, options);
-	});
+    jqXHR.success(function( data, status, jqXHR ) {
+        if ($.taconite.autodetect)
+            detect(jqXHR, options.dataType, options);
+    });
 });
 
 // < 1.5 hook
 var origHttpData = $.httpData;
 if ($.httpData)
- 	$.httpData = detect;  // replace jQuery's httpData method
+     $.httpData = detect;  // replace jQuery's httpData method
 
 // custom data parsers
 var parsers = { 'json': jsonParser };
 $.taconite.registerParser = function(type, fn) {
-	parsers[type] = fn;
+    parsers[type] = fn;
 };
 function parseRawData(type, data) {
-	var d = data, parser = parsers[type];
-	if ($.isFunction(parser))
-		d = parser(data);
+    var d = data, parser = parsers[type];
+    if ($.isFunction(parser))
+        d = parser(data);
     $.event.trigger('taconite-rawdata-notify', [type, d, data]);
-	return d;
+    return d;
 }
 function jsonParser(json) {
-	return parseJSON(json);
+    return parseJSON(json);
 }
 
 
-function processDoc(xml) { 
+function processDoc(xml) {
     var status = true, ex;
     try {
-		if (typeof xml == 'string')
-			xml = convert(xml);
-		if (!xml) {
-			log('$.taconite invoked without valid document; nothing to process');
-			return false;
-		}
-		
-		var root = xml.documentElement.tagName;
-		log('XML document root: ', root);
-		
-		var taconiteDoc = $('taconite', xml)[0];
-			
-		if (!taconiteDoc) {
-			log('document does not contain <taconite> element; nothing to process');
-			return false;
-		}
-		
-		$.event.trigger('taconite-begin-notify', [taconiteDoc]);
-        status = go(taconiteDoc); 
+        if (typeof xml == 'string')
+            xml = convert(xml);
+        if (!xml) {
+            log('$.taconite invoked without valid document; nothing to process');
+            return false;
+        }
+
+        var root = xml.documentElement.tagName;
+        log('XML document root: ', root);
+
+        var taconiteDoc = $('taconite', xml)[0];
+
+        if (!taconiteDoc) {
+            log('document does not contain <taconite> element; nothing to process');
+            return false;
+        }
+
+        $.event.trigger('taconite-begin-notify', [taconiteDoc]);
+        status = go(taconiteDoc);
     } catch(e) {
         status = ex = e;
     }
     $.event.trigger('taconite-complete-notify', [xml, !!status, status === true ? null : status]);
-    if (ex) 
-		throw ex;
+    if (ex)
+        throw ex;
 }
 
 // convert string to xml document
 function convert(s) {
-	var doc;
-	log('attempting string to document conversion');
-	try {
-		if (window.DOMParser) {
-			var parser = new DOMParser();
-			doc = parser.parseFromString(s, 'text/xml');
-		}
-		else {
-			doc = $("<xml>")[0];
-			doc.async = 'false';
-			doc.loadXML(s);
-		}
-	}
-	catch(e) {
-		if (window.console && window.console.error)
-			window.console.error('[taconite] ERROR parsing XML string for conversion: ' + e);
-		throw e;
-	}
-	var ok = doc && doc.documentElement && doc.documentElement.tagName != 'parsererror';
-	log('conversion ', ok ? 'successful!' : 'FAILED');
-	return doc;
+    var doc;
+    log('attempting string to document conversion');
+    try {
+        if (window.DOMParser) {
+            var parser = new DOMParser();
+            doc = parser.parseFromString(s, 'text/xml');
+        }
+        else {
+            doc = $("<xml>")[0];
+            doc.async = 'false';
+            doc.loadXML(s);
+        }
+    }
+    catch(e) {
+        if (window.console && window.console.error)
+            window.console.error('[taconite] ERROR parsing XML string for conversion: ' + e);
+        throw e;
+    }
+    var ok = doc && doc.documentElement && doc.documentElement.tagName != 'parsererror';
+    log('conversion ', ok ? 'successful!' : 'FAILED');
+    return doc;
 }
 
 function go(xml) {
@@ -206,12 +206,12 @@ function go(xml) {
     }
     return true;
 }
-    
-// process the taconite commands    
+
+// process the taconite commands
 function process(commands) {
     var trimHash = { wrap: 1 };
     var doPostProcess = 0;
-	var a, n, v, i, j, js, els, raw, type, q, jq, cdataWrap;
+    var a, n, v, i, j, js, els, raw, type, q, jq, cdataWrap;
 
     for(i=0; i < commands.length; i++) {
         if (commands[i].nodeType != 1)
@@ -220,17 +220,17 @@ function process(commands) {
         if (cmd == 'eval') {
             js = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
             log('invoking "eval" command: ', js);
-            if (js) 
-				$.globalEval(js);
+            if (js)
+                $.globalEval(js);
             continue;
         }
-		if (cmd == 'rawData') {
+        if (cmd == 'rawData') {
             raw = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
-         	type = cmdNode.getAttribute('type');
+             type = cmdNode.getAttribute('type');
             log('rawData ('+type+'): ', raw);
-			parseRawData(type, raw);
-			continue;
-		}
+            parseRawData(type, raw);
+            continue;
+        }
         q = cmdNode.getAttribute('select');
         jq = $(q);
         if (!jq[0]) {
@@ -259,11 +259,11 @@ function process(commands) {
             if (v === null)
                 break;
             // support numeric primitives
-			if (v.length) {
-	            var n = Number(v);
-				if (v == n)
-					v = n;
-			}
+            if (v.length) {
+                var n = Number(v);
+                if (v == n)
+                    v = n;
+            }
             a.push(v);
         }
 
@@ -276,19 +276,19 @@ function process(commands) {
 }
 
 function logCommand(q, cmd, a, els) {
-	var args = '...';
-	if (!els) {
-		args = '';
-		for (var k=0, val=a[0]; k < a.length, val=a[k]; k++) {
-			k > 0 && (args += ',');
-			typeof val == 'string' ? (args += ("'" + val + "'")) : (args += val);
-		}
-	}
+    var args = '...';
+    if (!els) {
+        args = '';
+        for (var k=0, val=a[0]; k < a.length, val=a[k]; k++) {
+            k > 0 && (args += ',');
+            typeof val == 'string' ? (args += ("'" + val + "'")) : (args += val);
+        }
+    }
     log("invoking command: $('", q, "').", cmd, '('+ args +')');
 }
 
 function postProcess() {
-    if ($.browser.mozilla) return; 
+    if ($.browser.mozilla) return;
     // post processing fixes go here; currently there is only one:
     // fix1: opera, IE6, Safari/Win don't maintain selected options in all cases (thanks to Karel Fučík for this!)
     $('select:taconiteTag').each(function() {
@@ -323,7 +323,7 @@ function handleCDATA(s, cdataWrap) {
     var el = document.createElement(cdataWrap);
     var $el = $(el)[cdataWrap == 'script' ? 'text' : 'html'](s);
     var $ch = $el.children();
-    
+
     // remove wrapper node if possible
     if ($ch.size() == 1)
         return $ch[0];
@@ -340,7 +340,7 @@ function createElement(node, cdataWrap) {
     // some elements in IE need to be created with attrs inline
     if ($.browser.msie && $.browser.version < 9) {
         var type = node.getAttribute('type');
-        if (tag == 'table' || type == 'radio' || type == 'checkbox' || tag == 'button' || 
+        if (tag == 'table' || type == 'radio' || type == 'checkbox' || tag == 'button' ||
             (tag == 'select' && node.getAttribute('multiple'))) {
             e = document.createElement('<' + tag + ' ' + copyAttrs(null, node, true) + '>');
         }
@@ -350,7 +350,7 @@ function createElement(node, cdataWrap) {
         // copyAttrs(e, node, tag == 'option' && $.browser.safari);
         copyAttrs(e, node);
     }
-    
+
     // IE fix; colspan must be explicitly set
     if ($.browser.msie && tag == 'td') {
         var colspan = node.getAttribute('colspan');
