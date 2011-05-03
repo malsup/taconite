@@ -121,9 +121,7 @@ if ($.httpData)
     $.httpData = detect;  // replace jQuery's httpData method
 
 // custom data parsers
-var rawData = {},
-    rawDataIndic = false,
-    parsers = { 'json': jsonParser };
+var parsers = { 'json': jsonParser }, rawData, rawDataIndic;
 
 $.taconite.registerParser = function(type, fn) {
     parsers[type] = fn;
@@ -215,6 +213,8 @@ function go(xml) {
 
 // process the taconite commands
 function process(commands) {
+    rawData = {};
+    rawDataIndic = false;
     var trimHash = { wrap: 1 };
     var doPostProcess = 0;
     var a, n, v, i, j, js, els, raw, type, q, jq, cdataWrap;
