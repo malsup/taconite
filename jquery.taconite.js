@@ -9,39 +9,41 @@
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.50  08-FEB-2011
- * @requires jQuery v1.2.6 or later
+ * @version: 3.62  25-APR-2011
+ * @requires jQuery v1.3.2 or later
  */
 
 (function($) {
-var version = '3.50';
+var version = '3.62';
 
-$.taconite = function(xml) { processDoc(xml); };
+$.taconite = function(xml) { 
+	processDoc(xml); 
+};
 
 $.taconite.debug = 0;  // set to true to enable debug logging to window.console.log
 $.taconite.autodetect = true;
-$.taconite.parsers = {};
 $.taconite.defaults = {
     cdataWrap: 'div'
 };
-var parsedData = null;
 
 // add 'replace' and 'replaceContent' plugins (conditionally)
-if (typeof $.fn.replace == 'undefined')
-    $.fn.replace = function(a) {
-        this.after(a);
-        this.remove();
+$.fn.replace = $.fn.replace || function(a) { 
+	this.after(a);
+	this.remove(); 
 };
-if (typeof $.fn.replaceContent == 'undefined')
-    $.fn.replaceContent = function(a) { return this.empty().append(a); };
+$.fn.replaceContent = $.fn.replaceContent || function(a) { 
+	return this.empty().append(a); 
+};
 
-$.expr[':'].taconiteTag = function(a) { return a.taconiteTag === 1; };
+$.expr[':'].taconiteTag = function(a) { 
+	return a.taconiteTag === 1; 
+};
 
 // allow auto-detection to be enabled/disabled on-demand
 $.taconite.enableAutoDetection = function(b) {
     $.taconite.autodetect = b;
-    if (oldHttpData)
-        $.httpData = b ? oldHttpData : detect;
+	if (origHttpData)
+		$.httpData = b ? origHttpData : detect;
 };
 
 var logCount = 0;
@@ -49,125 +51,148 @@ function log() {
     if (!$.taconite.debug || !window.console || !window.console.log) return;
     !logCount++ && log('Plugin Version: ' + version);
     window.console.log('[taconite] ' + [].join.call(arguments,''));
-};
+}
 
 var parseJSON = $.parseJSON || function(s) {
-    return window['eval']('(' + s + ')');
+	return window['eval']('(' + s + ')');
 };
 
-$.taconite.parsers["application/json"] = parseJSON;
+function httpData( xhr, type, s ) {
+	var ct = xhr.getResponseHeader('content-type') || '',
+		xml = type === 'xml' || !type && ct.indexOf('xml') >= 0,
+		data = xml ? xhr.responseXML : xhr.responseText;
 
-function httpData( xhr, type, s ) { // mostly lifted from jq1.4.4
-    var ct = xhr.getResponseHeader('content-type') || '',
-        xml = type === 'xml' || !type && ct.indexOf('xml') >= 0,
-        data = xml ? xhr.responseXML : xhr.responseText;
+	if (xml && data.documentElement.nodeName === 'parsererror') {
+		$.error && $.error('parsererror');
+	}
+	if (s && s.dataFilter) {
+		data = s.dataFilter(data, type);
+	}
+	if (typeof data === 'string') {
+		if (type === 'json' || !type && ct.indexOf('json') >= 0) {
+			data = parseJSON(data);
+		} else if (type === "script" || !type && ct.indexOf("javascript") >= 0) {
+			$.globalEval(data);
+		}
+	}
+	return data;
+}
 
-    if (xml && data.documentElement.nodeName === 'parsererror') {
-        $.error && $.error('parsererror');
-    }
-    if (s && s.dataFilter) {
-        data = s.dataFilter(data, type);
-    }
-    if (typeof data === 'string') {
-        if (type === 'json' || !type && ct.indexOf('json') >= 0) {
-            data = parseJSON(data);
-        } else if (type === "script" || !type && ct.indexOf("javascript") >= 0) {
-            $.globalEval(data);
-        }
-    }
-    return data;
-};
+function getResponse(xhr, type, s) {
+	if (origHttpData)
+		return origHttpData(xhr, type, s);
+	return xhr.responseXML || xhr.responseText;
+}
 
 function detect(xhr, type, s) {
     var ct = xhr.getResponseHeader('content-type');
     if ($.taconite.debug) {
         log('[AJAX response] content-type: ', ct, ';  status: ', xhr.status, ' ', xhr.statusText, ';  has responseXML: ', xhr.responseXML != null);
         log('type arg: ' + type);
-        log('responseXML: ' + xhr.responseXML);
+//        log('responseXML: ' + xhr.responseXML);  // IE9 doesn't like xhr.toString()
     }
-    var data = httpData(xhr, type, s); // call original method
-    if (data && data.documentElement) {
-        $.taconite(data);
+    var data = getResponse(xhr, type, s);
+    if (data && data.documentElement && data.documentElement.nodeName != 'parsererror') {
+		$.taconite(data);
     }
-    else {
+	else if (typeof data == 'string') {
+		// issue #4 (don't try to parse plain text or html responses
+		if ( /taconite/.test(data) )
+			$.taconite(data);
+	}
+    else { 
         log('jQuery core httpData returned: ' + data);
         log('httpData: response is not XML (or not "valid" XML)');
     }
     return data;
-};
+}
 
 // 1.5+ hook
 $.ajaxPrefilter && $.ajaxPrefilter(function( options, originalOptions, jqXHR ) {
-    jqXHR.success(function( data, status, jqXHR ) {
-        if ($.taconite.autodetect)
-            detect(jqXHR, options.dataType, options);
-    });
+	jqXHR.success(function( data, status, jqXHR ) {
+		if ($.taconite.autodetect)
+			detect(jqXHR, options.dataType, options);
+	});
 });
 
 // < 1.5 hook
-var oldHttpData = $.httpData;
+var origHttpData = $.httpData;
 if ($.httpData)
-     $.httpData = detect;  // replace jQuery's httpData method
+ 	$.httpData = detect;  // replace jQuery's httpData method
 
-function processDoc(xml) {
+// custom data parsers
+var parsers = { 'json': jsonParser };
+$.taconite.registerParser = function(type, fn) {
+	parsers[type] = fn;
+};
+function parseRawData(type, data) {
+	var d = data, parser = parsers[type];
+	if ($.isFunction(parser))
+		d = parser(data);
+    $.event.trigger('taconite-rawdata-notify', [type, d, data]);
+	return d;
+}
+function jsonParser(json) {
+	return parseJSON(json);
+}
+
+
+function processDoc(xml) { 
     var status = true, ex;
     try {
-        if (typeof xml == 'string')
-            xml = convert(xml);
-        if (!xml) {
-            log('$.taconite invoked without valid document; nothing to process');
-            return false;
-        }
-
-        var root = xml.documentElement.tagName;
-        log('XML document root: ', root);
-
-        var taconiteDoc = $('taconite', xml)[0];
-
-        if (!taconiteDoc) {
-            log('document does not contain <taconite> element; nothing to process');
-            return false;
-        }
-
-        $.event.trigger('taconite-begin-notify', [taconiteDoc]);
-        status = go(taconiteDoc);
+		if (typeof xml == 'string')
+			xml = convert(xml);
+		if (!xml) {
+			log('$.taconite invoked without valid document; nothing to process');
+			return false;
+		}
+		
+		var root = xml.documentElement.tagName;
+		log('XML document root: ', root);
+		
+		var taconiteDoc = $('taconite', xml)[0];
+			
+		if (!taconiteDoc) {
+			log('document does not contain <taconite> element; nothing to process');
+			return false;
+		}
+		
+		$.event.trigger('taconite-begin-notify', [taconiteDoc]);
+        status = go(taconiteDoc); 
     } catch(e) {
         status = ex = e;
     }
-    $.event.trigger('taconite-complete-notify', [xml, !!status, status === true ? null : status, parsedData]);
-    parsedData = null;
-    if (ex) throw ex;
-};
+    $.event.trigger('taconite-complete-notify', [xml, !!status, status === true ? null : status]);
+    if (ex) 
+		throw ex;
+}
 
 // convert string to xml document
 function convert(s) {
-    var doc;
-    log('attempting string to document conversion');
-    try {
-        if (window.DOMParser) {
-            var parser = new DOMParser();
-            doc = parser.parseFromString(s, 'text/xml');
-        }
-        else {
-            doc = $("<xml>")[0];
-            doc.async = 'false';
-            doc.loadXML(s);
-        }
-    }
-    catch(e) {
-        if (window.console && window.console.error)
-            window.console.error('[taconite] ERROR parsing XML string for conversion: ' + e);
-        throw e;
-    }
-    var ok = doc && doc.documentElement && doc.documentElement.tagName != 'parsererror';
-    log('conversion ', ok ? 'successful!' : 'FAILED');
-    return doc;
-};
-
+	var doc;
+	log('attempting string to document conversion');
+	try {
+		if (window.DOMParser) {
+			var parser = new DOMParser();
+			doc = parser.parseFromString(s, 'text/xml');
+		}
+		else {
+			doc = $("<xml>")[0];
+			doc.async = 'false';
+			doc.loadXML(s);
+		}
+	}
+	catch(e) {
+		if (window.console && window.console.error)
+			window.console.error('[taconite] ERROR parsing XML string for conversion: ' + e);
+		throw e;
+	}
+	var ok = doc && doc.documentElement && doc.documentElement.tagName != 'parsererror';
+	log('conversion ', ok ? 'successful!' : 'FAILED');
+	return doc;
+}
 
 function go(xml) {
-    var trimHash = { wrap: 1 };
-
     try {
         var t = new Date().getTime();
         // process the document
@@ -180,195 +205,187 @@ function go(xml) {
         throw e;
     }
     return true;
+}
+    
+// process the taconite commands    
+function process(commands) {
+    var trimHash = { wrap: 1 };
+    var doPostProcess = 0;
+	var a, n, v, i, j, js, els, raw, type, q, jq, cdataWrap;
 
-// process the taconite commands
-    function process(commands) {
-        var doPostProcess = 0;
-        for(var i=0; i < commands.length; i++) {
-            if (commands[i].nodeType != 1)
-                continue; // commands are elements
-            var cmdNode = commands[i], cmd = cmdNode.tagName;
-            if (cmd == 'eval') {
-                var js = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
-                log('invoking "eval" command: ', js);
-                if (js) $.globalEval(js);
-                continue;
-            } else if (cmd == 'data') {
-                var data = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null),
-                    typ = cmdNode.getAttribute('type');
-                log('processing "' + typ + '" data type: ', data);
-                if (data) {
-                    var prsr = $.taconite.parsers[typ];
-                    if (!typ || !prsr) {
-                        log('no parser found for specified data type: ', typ);
-                        continue;
-                    }
-                    // TODO: aggregate multiple data nodes into a single returned array
-                    // TODO: ideally, pass data to original request's callbacks (via jqXHR?)
-                    parsedData = prsr(data);
-                }
-                continue;
-            }
-            var q = cmdNode.getAttribute('select');
-            var jq = $(q);
-            if (!jq[0]) {
-                log('No matching targets for selector: ', q);
-                continue;
-            }
-            var cdataWrap = cmdNode.getAttribute('cdataWrap') || $.taconite.defaults.cdataWrap;
-
-            var a = [];
-            if (cmdNode.childNodes.length > 0) {
-                doPostProcess = 1;
-                for (var j=0,els=[]; j < cmdNode.childNodes.length; j++)
-                    els[j] = createNode(cmdNode.childNodes[j]);
-                a.push(trimHash[cmd] ? cleanse(els) : els);
-            }
-
-            // remain backward compat with pre 2.0.9 versions
-            var n = cmdNode.getAttribute('name');
-            var v = cmdNode.getAttribute('value');
-            if (n !== null) a.push(n);
-            if (v !== null) a.push(v);
-
-            // @since: 2.0.9: support arg1, arg2, arg3...
-            for (var j=1; true; j++) {
-                v = cmdNode.getAttribute('arg'+j);
-                if (v === null)
-                    break;
-                // support numeric primitives
-                var n = Number(v);
-                if (v == n)
-                    v = n;
-                a.push(v);
-            }
-
-            if ($.taconite.debug) {
-                var args = '';
-                if (els)
-                    args = '...';
-                else {
-                    for (var k=0; k < a.length; k++) {
-                        if (k > 0)
-                            args += ',';
-                        var val = a[k];
-                        var isString = typeof val == 'string';
-                        if (isString)
-                            args += '\'';
-                        args += val;
-                        if (isString)
-                            args += '\'';
-                    }
-                }
-                log("invoking command: $('", q, "').", cmd, '('+ args +')');
-            }
-            jq[cmd].apply(jq,a);
+    for(i=0; i < commands.length; i++) {
+        if (commands[i].nodeType != 1)
+            continue; // commands are elements
+        var cmdNode = commands[i], cmd = cmdNode.tagName;
+        if (cmd == 'eval') {
+            js = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
+            log('invoking "eval" command: ', js);
+            if (js) 
+				$.globalEval(js);
+            continue;
         }
-        // apply dynamic fixes
-        if (doPostProcess)
-            postProcess();
+		if (cmd == 'rawData') {
+            raw = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
+         	type = cmdNode.getAttribute('type');
+            log('rawData ('+type+'): ', raw);
+			parseRawData(type, raw);
+			continue;
+		}
+        q = cmdNode.getAttribute('select');
+        jq = $(q);
+        if (!jq[0]) {
+            log('No matching targets for selector: ', q);
+            continue;
+        }
+        cdataWrap = cmdNode.getAttribute('cdataWrap') || $.taconite.defaults.cdataWrap;
 
-        function postProcess() {
-            if ($.browser.mozilla) return;
-            // post processing fixes go here; currently there is only one:
-            // fix1: opera, IE6, Safari/Win don't maintain selected options in all cases (thanks to Karel Fučík for this!)
-            $('select:taconiteTag').each(function() {
-                var sel = this;
-                $('option:taconiteTag', this).each(function() {
-                    this.setAttribute('selected','selected');
-                    this.taconiteTag = null;
-                    if (sel.type == 'select-one') {
-                        var idx = $('option',sel).index(this);
-                        sel.selectedIndex = idx;
-                    }
-                });
-                this.taconiteTag = null;
-            });
-        };
+        a = [];
+        if (cmdNode.childNodes.length > 0) {
+            doPostProcess = 1;
+            for (j=0,els=[]; j < cmdNode.childNodes.length; j++)
+                els[j] = createNode(cmdNode.childNodes[j], cdataWrap);
+            a.push(trimHash[cmd] ? cleanse(els) : els);
+        }
 
-        function cleanse(els) {
-            for (var i=0, a=[]; i < els.length; i++)
-                if (els[i].nodeType == 1) a.push(els[i]);
-            return a;
-        };
+        // remain backward compat with pre 2.0.9 versions
+        n = cmdNode.getAttribute('name');
+        v = cmdNode.getAttribute('value');
+        if (n !== null) a.push(n);
+        if (v !== null) a.push(v);
 
-        function createNode(node) {
-            var type = node.nodeType;
-            if (type == 1) return createElement(node);
-            if (type == 3) return fixTextNode(node.nodeValue);
-            if (type == 4) return handleCDATA(node.nodeValue);
-            return null;
-        };
+        // @since: 2.0.9: support arg1, arg2, arg3...
+        for (var j=1; true; j++) {
+            v = cmdNode.getAttribute('arg'+j);
+            if (v === null)
+                break;
+            // support numeric primitives
+			if (v.length) {
+	            var n = Number(v);
+				if (v == n)
+					v = n;
+			}
+            a.push(v);
+        }
 
-        function handleCDATA(s) {
-            var el = document.createElement(cdataWrap);
-            el.innerHTML = s;
+        $.taconite.debug && logCommand(q, cmd, a, els);
+        jq[cmd].apply(jq,a);
+    }
 
-            // remove wrapper node if possible
-            var $el = $(el), $ch = $el.children();
-            if ($ch.size() == 1)
-                return $ch[0];
-            return el;
-        };
+    // apply dynamic fixes
+    doPostProcess && postProcess();
+}
 
-        function fixTextNode(s) {
-            if ($.browser.msie) s = s.replace(/\n/g, '\r').replace(/\s+/g, ' ');
-            return document.createTextNode(s);
-        };
+function logCommand(q, cmd, a, els) {
+	var args = '...';
+	if (!els) {
+		args = '';
+		for (var k=0, val=a[0]; k < a.length, val=a[k]; k++) {
+			k > 0 && (args += ',');
+			typeof val == 'string' ? (args += ("'" + val + "'")) : (args += val);
+		}
+	}
+    log("invoking command: $('", q, "').", cmd, '('+ args +')');
+}
 
-        function createElement(node) {
-            var e, tag = node.tagName.toLowerCase();
-            // some elements in IE need to be created with attrs inline
-            if ($.browser.msie) {
-                var type = node.getAttribute('type');
-                if (tag == 'table' || type == 'radio' || type == 'checkbox' || tag == 'button' ||
-                    (tag == 'select' && node.getAttribute('multiple'))) {
-                    e = document.createElement('<' + tag + ' ' + copyAttrs(null, node, true) + '>');
-                }
+function postProcess() {
+    if ($.browser.mozilla) return; 
+    // post processing fixes go here; currently there is only one:
+    // fix1: opera, IE6, Safari/Win don't maintain selected options in all cases (thanks to Karel Fučík for this!)
+    $('select:taconiteTag').each(function() {
+        var sel = this;
+        $('option:taconiteTag', this).each(function() {
+            this.setAttribute('selected','selected');
+            this.taconiteTag = null;
+            if (sel.type == 'select-one') {
+                var idx = $('option',sel).index(this);
+                sel.selectedIndex = idx;
             }
-            if (!e) {
-                e = document.createElement(tag);
-                // copyAttrs(e, node, tag == 'option' && $.browser.safari);
-                copyAttrs(e, node);
-            }
+        });
+        this.taconiteTag = null;
+    });
+}
 
-            // IE fix; colspan must be explicitly set
-            if ($.browser.msie && tag == 'td') {
-                var colspan = node.getAttribute('colspan');
-                if (colspan) e.colSpan = parseInt(colspan);
-            }
+function cleanse(els) {
+    for (var i=0, a=[]; i < els.length; i++)
+        if (els[i].nodeType == 1) a.push(els[i]);
+    return a;
+}
 
-            // IE fix; script tag not allowed to have children
-            if($.browser.msie && !e.canHaveChildren) {
-                if(node.childNodes.length > 0)
-                    e.text = node.text;
-            }
-            else {
-                for(var i=0, max=node.childNodes.length; i < max; i++) {
-                    var child = createNode (node.childNodes[i]);
-                    if(child) e.appendChild(child);
-                }
-            }
-            if (! $.browser.mozilla) {
-                if (tag == 'select' || (tag == 'option' && node.getAttribute('selected')))
-                    e.taconiteTag = 1;
-            }
-            return e;
-        };
+function createNode(node, cdataWrap) {
+    var type = node.nodeType;
+    if (type == 1) return createElement(node, cdataWrap);
+    if (type == 3) return fixTextNode(node.nodeValue);
+    if (type == 4) return handleCDATA(node.nodeValue, cdataWrap);
+    return null;
+}
 
-        function copyAttrs(dest, src, inline) {
-            for (var i=0, attr=''; i < src.attributes.length; i++) {
-                var a = src.attributes[i], n = $.trim(a.name), v = $.trim(a.value);
-                if (inline) attr += (n + '="' + v + '" ');
-                else if (n == 'style') { // IE workaround
-                    dest.style.cssText = v;
-                    dest.setAttribute(n, v);
-                }
-                else $.attr(dest, n, v);
-            }
-            return attr;
-        };
-    };
-};
+function handleCDATA(s, cdataWrap) {
+    var el = document.createElement(cdataWrap);
+    var $el = $(el)[cdataWrap == 'script' ? 'text' : 'html'](s);
+    var $ch = $el.children();
+    
+    // remove wrapper node if possible
+    if ($ch.size() == 1)
+        return $ch[0];
+    return el;
+}
+
+function fixTextNode(s) {
+    if ($.browser.msie) s = s.replace(/\n/g, '\r').replace(/\s+/g, ' ');
+    return document.createTextNode(s);
+}
+
+function createElement(node, cdataWrap) {
+    var e, tag = node.tagName.toLowerCase();
+    // some elements in IE need to be created with attrs inline
+    if ($.browser.msie && $.browser.version < 9) {
+        var type = node.getAttribute('type');
+        if (tag == 'table' || type == 'radio' || type == 'checkbox' || tag == 'button' || 
+            (tag == 'select' && node.getAttribute('multiple'))) {
+            e = document.createElement('<' + tag + ' ' + copyAttrs(null, node, true) + '>');
+        }
+    }
+    if (!e) {
+        e = document.createElement(tag);
+        // copyAttrs(e, node, tag == 'option' && $.browser.safari);
+        copyAttrs(e, node);
+    }
+    
+    // IE fix; colspan must be explicitly set
+    if ($.browser.msie && tag == 'td') {
+        var colspan = node.getAttribute('colspan');
+        if (colspan) e.colSpan = parseInt(colspan);
+    }
+
+    // IE fix; script tag not allowed to have children
+    if($.browser.msie && !e.canHaveChildren) {
+        if(node.childNodes.length > 0)
+            e.text = node.text;
+    }
+    else {
+        for(var i=0, max=node.childNodes.length; i < max; i++) {
+            var child = createNode (node.childNodes[i], cdataWrap);
+            if(child) e.appendChild(child);
+        }
+    }
+    if (! $.browser.mozilla) {
+        if (tag == 'select' || (tag == 'option' && node.getAttribute('selected')))
+            e.taconiteTag = 1;
+    }
+    return e;
+}
+
+function copyAttrs(dest, src, inline) {
+    for (var i=0, attr=''; i < src.attributes.length; i++) {
+        var a = src.attributes[i], n = $.trim(a.name), v = $.trim(a.value);
+        if (inline) attr += (n + '="' + v + '" ');
+        else if (n == 'style') { // IE workaround
+            dest.style.cssText = v;
+            dest.setAttribute(n, v);
+        }
+        else $.attr(dest, n, v);
+    }
+    return attr;
+}
 
 })(jQuery);
