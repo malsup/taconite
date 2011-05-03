@@ -118,20 +118,25 @@ $.ajaxPrefilter && $.ajaxPrefilter(function( options, originalOptions, jqXHR ) {
 // < 1.5 hook
 var origHttpData = $.httpData;
 if ($.httpData)
-     $.httpData = detect;  // replace jQuery's httpData method
+    $.httpData = detect;  // replace jQuery's httpData method
 
 // custom data parsers
-var parsers = { 'json': jsonParser };
+var rawData = {},
+    rawDataIndic = false,
+    parsers = { 'json': jsonParser };
+
 $.taconite.registerParser = function(type, fn) {
     parsers[type] = fn;
 };
+
 function parseRawData(type, data) {
     var d = data, parser = parsers[type];
     if ($.isFunction(parser))
-        d = parser(data);
-    $.event.trigger('taconite-rawdata-notify', [type, d, data]);
-    return d;
+        return parser(data);
+    else
+        throw 'No parser registered for rawData of type "' + type + '"';
 }
+
 function jsonParser(json) {
     return parseJSON(json);
 }
@@ -162,6 +167,7 @@ function processDoc(xml) {
     } catch(e) {
         status = ex = e;
     }
+    rawDataIndic && $.event.trigger('taconite-rawdata-notify', [rawData]);
     $.event.trigger('taconite-complete-notify', [xml, !!status, status === true ? null : status]);
     if (ex)
         throw ex;
@@ -226,9 +232,20 @@ function process(commands) {
         }
         if (cmd == 'rawData') {
             raw = (cmdNode.firstChild ? cmdNode.firstChild.nodeValue : null);
-             type = cmdNode.getAttribute('type');
+            type = cmdNode.getAttribute('type');
             log('rawData ('+type+'): ', raw);
-            parseRawData(type, raw);
+
+            var namespace = cmdNode.getAttribute('namespace') || 'none';
+
+            !rawData[namespace] && (rawData[namespace] = []);
+
+            rawData[namespace].push({
+                data: parseRawData(type, raw),
+                type: type,
+                name: cmdNode.getAttribute('name') || null,
+                raw: raw
+            });
+            !rawDataIndic && (rawDataIndic = true);
             continue;
         }
         q = cmdNode.getAttribute('select');
