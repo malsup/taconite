@@ -9,12 +9,12 @@
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.63  16-JUN-2011
+ * @version: 3.64  16-JUN-2011
  * @requires jQuery v1.3.2 or later
  */
 
 (function($) {
-var version = '3.63';
+var version = '3.64';
 
 $.taconite = function(xml) {
     processDoc(xml);
@@ -145,7 +145,7 @@ function processDoc(xml) {
     try {
         if (typeof xml == 'string')
             xml = convert(xml);
-        if (!xml) {
+        if (! ( xml && xml.documentElement) ) {
             log('$.taconite invoked without valid document; nothing to process');
             return false;
         }
