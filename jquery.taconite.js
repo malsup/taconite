@@ -9,7 +9,7 @@
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.62  25-APR-2011
+ * @version: 3.63  16-JUN-2011
  * @requires jQuery v1.3.2 or later
  */
 
