@@ -9,12 +9,21 @@
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.64  16-JUN-2011
+ * @version: 3.65  23-FEB-2013
  * @requires jQuery v1.3.2 or later
  */
 
 (function($) {
-var version = '3.64';
+var version = '3.65';
+
+var browser = $.browser;
+if ( ! browser ) {
+   var ua = navigator.userAgent.toLowerCase();
+   var m = /(msie) ([\w.]+)/.exec( ua ) || ! /compatible/.test(ua) && /(mozilla)/.exec( ua ) || [];
+   browser = { version: m[2] };
+   browser[ m[1] ] = true;
+}
+
 
 $.taconite = function(xml) {
     processDoc(xml);
@@ -49,11 +58,13 @@ $.taconite.enableAutoDetection = function(b) {
 var logCount = 0;
 function log() {
     if (!$.taconite.debug || !window.console || !window.console.log) return;
-    !logCount++ && log('Plugin Version: ' + version);
+    if (++logCount === 1)
+        log('Plugin Version: ' + version);
     window.console.log('[taconite] ' + [].join.call(arguments,''));
 }
 
 var parseJSON = $.parseJSON || function(s) {
+    /*jshint evil:true */
     return window['eval']('(' + s + ')');
 };
 
@@ -63,7 +74,8 @@ function httpData( xhr, type, s ) {
         data = xml ? xhr.responseXML : xhr.responseText;
 
     if (xml && data.documentElement.nodeName === 'parsererror') {
-        $.error && $.error('parsererror');
+        if ($.error)
+            $.error('parsererror');
     }
     if (s && s.dataFilter) {
         data = s.dataFilter(data, type);
@@ -87,7 +99,7 @@ function getResponse(xhr, type, s) {
 function detect(xhr, type, s) {
     var ct = xhr.getResponseHeader('content-type');
     if ($.taconite.debug) {
-        log('[AJAX response] content-type: ', ct, ';  status: ', xhr.status, ' ', xhr.statusText, ';  has responseXML: ', xhr.responseXML != null);
+        log('[AJAX response] content-type: ', ct, ';  status: ', xhr.status, ' ', xhr.statusText, ';  has responseXML: ', xhr.responseXML !== null);
         log('type arg: ' + type);
 //        log('responseXML: ' + xhr.responseXML);  // IE9 doesn't like xhr.toString()
     }
@@ -108,12 +120,14 @@ function detect(xhr, type, s) {
 }
 
 // 1.5+ hook
-$.ajaxPrefilter && $.ajaxPrefilter(function( options, originalOptions, jqXHR ) {
-    jqXHR.success(function( data, status, jqXHR ) {
-        if ($.taconite.autodetect)
-            detect(jqXHR, options.dataType, options);
+if ($.ajaxPrefilter) {
+    $.ajaxPrefilter(function( options, originalOptions, jqXHR ) {
+        jqXHR.success(function( data, status, jqXHR ) {
+            if ($.taconite.autodetect)
+                detect(jqXHR, options.dataType, options);
+        });
     });
-});
+}
 
 // < 1.5 hook
 var origHttpData = $.httpData;
@@ -165,7 +179,8 @@ function processDoc(xml) {
     } catch(e) {
         status = ex = e;
     }
-    rawDataIndic && $.event.trigger('taconite-rawdata-notify', [rawData]);
+    if (rawDataIndic)
+        $.event.trigger('taconite-rawdata-notify', [rawData]);
     $.event.trigger('taconite-complete-notify', [xml, !!status, status === true ? null : status]);
     if (ex)
         throw ex;
@@ -217,7 +232,7 @@ function process(commands) {
     rawDataIndic = false;
     var trimHash = { wrap: 1 };
     var doPostProcess = 0;
-    var a, n, v, i, j, js, els, raw, type, q, jq, cdataWrap;
+    var a, n, v, i, j, js, els, raw, type, q, jq, cdataWrap, tmp;
 
     for(i=0; i < commands.length; i++) {
         if (commands[i].nodeType != 1)
@@ -237,7 +252,8 @@ function process(commands) {
 
             var namespace = cmdNode.getAttribute('namespace') || 'none';
 
-            !rawData[namespace] && (rawData[namespace] = []);
+            if (!rawData[namespace])
+                rawData[namespace] = [];
 
             rawData[namespace].push({
                 data: parseRawData(type, raw),
@@ -245,7 +261,8 @@ function process(commands) {
                 name: cmdNode.getAttribute('name') || null,
                 raw: raw
             });
-            !rawDataIndic && (rawDataIndic = true);
+            if (!rawDataIndic)
+                rawDataIndic = true;
             continue;
         }
         q = cmdNode.getAttribute('select');
@@ -267,45 +284,58 @@ function process(commands) {
         // remain backward compat with pre 2.0.9 versions
         n = cmdNode.getAttribute('name');
         v = cmdNode.getAttribute('value');
-        if (n !== null) a.push(n);
-        if (v !== null) a.push(v);
+        if (n !== null) 
+            a.push(n);
+        if (v !== null) {
+            tmp = Number(v);
+            if (v == tmp)
+                v = tmp;
+            a.push(v);
+        }
 
         // @since: 2.0.9: support arg1, arg2, arg3...
-        for (var j=1; true; j++) {
+        for (j=1; true; j++) {
             v = cmdNode.getAttribute('arg'+j);
             if (v === null)
                 break;
             // support numeric primitives
             if (v.length) {
-                var n = Number(v);
-                if (v == n)
-                    v = n;
+                tmp = Number(v);
+                if (v == tmp)
+                    v = tmp;
             }
             a.push(v);
         }
 
-        $.taconite.debug && logCommand(q, cmd, a, els);
+        if ($.taconite.debug)
+            logCommand(q, cmd, a, els);
         jq[cmd].apply(jq,a);
     }
 
     // apply dynamic fixes
-    doPostProcess && postProcess();
+    if (doPostProcess)
+        postProcess();
 }
 
 function logCommand(q, cmd, a, els) {
     var args = '...';
     if (!els) {
         args = '';
-        for (var k=0, val=a[0]; k < a.length, val=a[k]; k++) {
-            k > 0 && (args += ',');
-            typeof val == 'string' ? (args += ("'" + val + "'")) : (args += val);
+        for (var k=0; k < a.length; k++) {
+            val=a[k];
+            if (k > 0)
+                args += ',';
+            if (typeof val == 'string')
+                args += ("'" + val + "'");
+            else
+                args += val;
         }
     }
     log("invoking command: $('", q, "').", cmd, '('+ args +')');
 }
 
 function postProcess() {
-    if ($.browser.mozilla) return;
+    if (browser.mozilla) return;
     // post processing fixes go here; currently there is only one:
     // fix1: opera, IE6, Safari/Win don't maintain selected options in all cases (thanks to Karel Fučík for this!)
     $('select:taconiteTag').each(function() {
@@ -348,14 +378,15 @@ function handleCDATA(s, cdataWrap) {
 }
 
 function fixTextNode(s) {
-    if ($.browser.msie) s = s.replace(/\n/g, '\r').replace(/\s+/g, ' ');
+    if (browser.msie) 
+        s = s.replace(/\n/g, '\r').replace(/\s+/g, ' ');
     return document.createTextNode(s);
 }
 
 function createElement(node, cdataWrap) {
     var e, tag = node.tagName.toLowerCase();
     // some elements in IE need to be created with attrs inline
-    if ($.browser.msie && $.browser.version < 9) {
+    if (browser.msie && browser.version < 9) {
         var type = node.getAttribute('type');
         if (tag == 'table' || type == 'radio' || type == 'checkbox' || tag == 'button' ||
             (tag == 'select' && node.getAttribute('multiple'))) {
@@ -364,18 +395,18 @@ function createElement(node, cdataWrap) {
     }
     if (!e) {
         e = document.createElement(tag);
-        // copyAttrs(e, node, tag == 'option' && $.browser.safari);
         copyAttrs(e, node);
     }
 
     // IE fix; colspan must be explicitly set
-    if ($.browser.msie && tag == 'td') {
+    if (browser.msie && tag == 'td') {
         var colspan = node.getAttribute('colspan');
-        if (colspan) e.colSpan = parseInt(colspan);
+        if (colspan) 
+            e.colSpan = parseInt(colspan, 10);
     }
 
     // IE fix; script tag not allowed to have children
-    if($.browser.msie && !e.canHaveChildren) {
+    if(browser.msie && !e.canHaveChildren) {
         if(node.childNodes.length > 0)
             e.text = node.text;
     }
@@ -385,7 +416,7 @@ function createElement(node, cdataWrap) {
             if(child) e.appendChild(child);
         }
     }
-    if (! $.browser.mozilla) {
+    if (! browser.mozilla) {
         if (tag == 'select' || (tag == 'option' && node.getAttribute('selected')))
             e.taconiteTag = 1;
     }
