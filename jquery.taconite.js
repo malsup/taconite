@@ -9,12 +9,12 @@
  * http://www.gnu.org/licenses/gpl.html
  * Thanks to Kenton Simpson for contributing many good ideas!
  *
- * @version: 3.65  23-FEB-2013
+ * @version: 3.66  02-MAR-2013
  * @requires jQuery v1.3.2 or later
  */
 
 (function($) {
-var version = '3.65';
+var version = '3.66';
 
 var browser = $.browser;
 if ( ! browser ) {
@@ -39,6 +39,7 @@ $.taconite.defaults = {
 $.fn.replace = $.fn.replace || function(a) {
     this.after(a);
     this.remove();
+    return this; // #14
 };
 $.fn.replaceContent = $.fn.replaceContent || function(a) {
     return this.empty().append(a);
